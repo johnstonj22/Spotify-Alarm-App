@@ -31,14 +31,16 @@ final class AppViewModel: ObservableObject {
         SpotifyConfig.isConfigured && authManager.isAuthenticated
     }
 
-    init(authManager: SpotifyAuthManager = SpotifyAuthManager()) {
-        self.authManager = authManager
-        self.apiClient = SpotifyAPIClient(authManager: authManager)
+    init(authManager: SpotifyAuthManager? = nil) {
+        let resolvedAuthManager = authManager ?? SpotifyAuthManager()
+
+        self.authManager = resolvedAuthManager
+        self.apiClient = SpotifyAPIClient(authManager: resolvedAuthManager)
         self.persistedPlaylist = Self.loadPersistedPlaylist(key: selectedPlaylistStorageKey)
         self.selectedPlaylistID = persistedPlaylist?.id
 
         if SpotifyConfig.isConfigured {
-            statusMessage = authManager.isAuthenticated
+            statusMessage = resolvedAuthManager.isAuthenticated
                 ? "Connected. Load your playlists to begin."
                 : "Connect Spotify to begin."
         }
@@ -46,17 +48,17 @@ final class AppViewModel: ObservableObject {
 
     func connectSpotify() {
         runTask {
-            let url = try authManager.makeAuthorizationURL()
+            let url = try self.authManager.makeAuthorizationURL()
             UIApplication.shared.open(url)
-            statusMessage = "Finish Spotify login in the browser, then return to the app."
+            self.statusMessage = "Finish Spotify login in the browser, then return to the app."
         }
     }
 
     func handleRedirectURL(_ url: URL) {
         runTask {
-            try await authManager.handleRedirectURL(url)
-            statusMessage = "Spotify connected. Loading playlists..."
-            try await loadPlaylists()
+            try await self.authManager.handleRedirectURL(url)
+            self.statusMessage = "Spotify connected. Loading playlists..."
+            try await self.loadPlaylists()
         }
     }
 
@@ -87,35 +89,35 @@ final class AppViewModel: ObservableObject {
 
     func loadPlaylistsButtonTapped() {
         runTask {
-            statusMessage = "Loading playlists..."
-            try await loadPlaylists()
+            self.statusMessage = "Loading playlists..."
+            try await self.loadPlaylists()
         }
     }
 
     func playRandomSongNow() {
         runTask {
-            try await playRandomSongFromSelectedPlaylist()
+            try await self.playRandomSongFromSelectedPlaylist()
         }
     }
 
     func scheduleAlarm() {
         runTask {
-            guard let playlist = activePlaylist else {
-                statusMessage = "Choose a playlist before scheduling an alarm."
+            guard let playlist = self.activePlaylist else {
+                self.statusMessage = "Choose a playlist before scheduling an alarm."
                 return
             }
 
-            let fireDate = nextFireDate(from: alarmDate)
-            try await alarmScheduler.scheduleAlarm(at: fireDate, playlistName: playlist.name)
-            statusMessage = "Alarm scheduled for \(fireDate.formatted(date: .omitted, time: .shortened)). Tap the notification to start Spotify playback."
+            let fireDate = self.nextFireDate(from: self.alarmDate)
+            try await self.alarmScheduler.scheduleAlarm(at: fireDate, playlistName: playlist.name)
+            self.statusMessage = "Alarm scheduled for \(fireDate.formatted(date: .omitted, time: .shortened)). Tap the notification to start Spotify playback."
         }
     }
 
     func handleAlarmNotificationTap() {
         UserDefaults.standard.set(false, forKey: AppNotificationKeys.pendingAlarmNotificationTap)
         runTask {
-            statusMessage = "Alarm opened. Trying Spotify playback..."
-            try await playRandomSongFromSelectedPlaylist()
+            self.statusMessage = "Alarm opened. Trying Spotify playback..."
+            try await self.playRandomSongFromSelectedPlaylist()
         }
     }
 
@@ -166,14 +168,14 @@ final class AppViewModel: ObservableObject {
     private func runTask(_ operation: @escaping () async throws -> Void) {
         isBusy = true
 
-        Task {
+        Task { [self] in
             do {
                 try await operation()
             } catch {
-                statusMessage = error.localizedDescription
+                self.statusMessage = error.localizedDescription
             }
 
-            isBusy = false
+            self.isBusy = false
         }
     }
 
